@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/KelpGF/Go-Expert/08-APIs/configs"
 	"github.com/KelpGF/Go-Expert/08-APIs/internal/domain/entity"
@@ -50,12 +55,46 @@ func main() {
 	router.Use(middleware.WithValue("jwtAuth", configs.TokenAuth))
 	router.Use(middleware.WithValue("jwtExpiresIn", configs.JWTExpiresIn))
 
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Welcome to Go Expert API"))
+	})
+
+	router.Get("/sleep", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Second)
+		w.Write([]byte("I woke up after 5 seconds"))
+	})
+
 	mapperProductRoutes(router, db, configs.TokenAuth)
 	mapperUserRoutes(router, db)
 
 	router.Get("/docs/*", httpSwagger.Handler(httpSwagger.URL("http://localhost:3000/docs/doc.json")))
 
-	http.ListenAndServe(configs.WebServerHost+":"+configs.WebServerPort, router)
+	server := &http.Server{
+		Addr:    configs.WebServerHost + ":" + configs.WebServerPort,
+		Handler: router,
+	}
+
+	go func() {
+		log.Printf("Server is running on http://%s\n", server.Addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Could not listen on %s: %v\n", server.Addr, err)
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	<-stop
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	log.Println("Server is shutting down...")
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("Could not gracefully shutdown the server: %v\n", err)
+	}
+
+	log.Println("Server stopped")
 }
 
 func mapperProductRoutes(router *chi.Mux, db *gorm.DB, jwt *jwtauth.JWTAuth) {

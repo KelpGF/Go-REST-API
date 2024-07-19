@@ -8,6 +8,7 @@ Practice of Go http server with REST API.
 - Chi
 - REST
 - CRUD
+- Graceful shutdown
 
 ## How to run
 
